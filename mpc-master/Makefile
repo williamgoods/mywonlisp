@@ -10,10 +10,12 @@ TESTS = $(wildcard tests/*.c)
 EXAMPLES = $(wildcard examples/*.c)
 EXAMPLESEXE = $(EXAMPLES:.c=)
 
+.PHONY:parsing
+
 all: $(EXAMPLESEXE) check 
 
 parsing:
-	gcc -std=c99 -Wall parsing02.c mpc.c -o parsing  -lm  -lreadline
+	gcc -std=c99 -Wall parsing02.c mpc.c -o parsing02  -lm  -lreadline
 
 check: $(TESTS) mpc.c
 	$(CC) $(filter-out -Werror, $(CFLAGS)) $^ -lm -o test
@@ -21,7 +23,8 @@ check: $(TESTS) mpc.c
 
 examples/%: examples/%.c mpc.c
 	$(CC) $(CFLAGS) $^ -lm -o $@
-  
+clean_p:
+	rm parsing02
 clean:
 	rm -rf test examples/doge examples/lispy examples/maths examples/smallc \
-	examples/foobar examples/tree_traversal
+	examples/foobar examples/tree_traversal 

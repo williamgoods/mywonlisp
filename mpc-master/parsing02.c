@@ -1,6 +1,7 @@
 #include<stdio.h>
 #include<stdlib.h>
 #include "mpc.h"
+#define LASSERT(args,cond,err) if(!(cond)){lval_free(args);return lval_err(err);}
 #ifdef _WIN32
 #include<string.h>
 
@@ -70,7 +71,7 @@ lval* lval_sym(char* sym){
      return x;
 }
 
-lval* lval_child(void){
+lval* lval_sexp(void){
      lval* x = malloc(sizeof(lval));
      x->type = LVAL_SEXP;
      x->count = 0;
@@ -126,8 +127,8 @@ lval* lval_read(mpc_ast_t* t){
 
      lval* x;
      //这里是一个问题,这里是我们的开始的那个导向符
-     if(strcmp(t->tag,">") == 0){x = lval_child();}
-     if(strstr(t->tag,"sexpresion")){x = lval_child();}
+     if(strcmp(t->tag,">") == 0){x = lval_sexp();}
+     if(strstr(t->tag,"sexpresion")){x = lval_sexp();}
      if(strstr(t->tag,"qexpresion")){x = lval_qexp();}
 
     for(int i=0;i<t->children_num;i++){
@@ -190,6 +191,8 @@ lval* lval_take(lval* v,int i){
      return tmp;
 }
 
+
+
 lval* builtin_op(lval* v,char* op){
      for(int i=0;i<v->count;i++){
           if(v->child[i]->type != LVAL_NUM){
@@ -222,11 +225,137 @@ lval* builtin_op(lval* v,char* op){
            }
           x->number /= y->number;
        }
+       if(strcmp(op,"list") == 0){
+            
+       }
+
      lval_free(y);
     }
 
     lval_free(v);
     return x;
+}
+
+void print_lval(lval* v){
+   printf("now the type:%d\n",v->type);
+   printf("now the number:%li\n",v->number);
+   printf("now the sym:%s\n",v->sym);
+   printf("now the count:%d\n",v->count);
+}
+
+//make the qexpression to sexpression
+lval* builtin_list(lval* x){
+    x->type = LVAL_QEXP;
+    return x;
+}
+
+lval* builtin_head(lval* v){
+    print_lval(v);
+    printf("----------------------\n");
+    print_lval(v->child[0]);
+    //if(v->count != 1){
+    //    lval_free(v);
+    //    return lval_err("the argc is too long!");
+    //}
+  
+    //if(v->child[0]->type != LVAL_QEXP){
+    //    lval_free(v);
+    //    return lval_err("function 'head' passed with wrong types!");
+    //}
+
+    //if(v->child[0]->count == 0){
+    //    lval_free(v);
+    //    return lval_err("function 'head' can't be the mode of {}");
+    //}
+    
+    LASSERT(v,v->count == 1,"the argc is too long!");
+    LASSERT(v,v->child[0]->type == LVAL_QEXP,
+         "function 'tail' passed with wrong types!");
+    LASSERT(v,v->child[0]->count != 0,
+         "function 'tail' can't be the mode of {}");
+
+    lval* x = lval_take(v,0);
+    //this location use the operation of while not the if 
+    while(x->count>1){lval_free(lval_pop(x,1));}
+    return x;
+}
+
+lval* builtin_tail(lval* v){
+    //if(v->count != 1){
+    //   lval_free(v);
+    //   return lval_err("the argc is too long!");
+    //}
+
+    //if(v->child[0]->type != LVAL_QEXP){
+    //   lval_free(v);
+    //   return lval_err("function 'tail' passed with wrong types!");
+    //}
+
+    //if(v->child[0]->count == 0){
+    //    lval_free(v);
+    //    return lval_err("function 'tail' can't be the mode of {}");
+    //}
+    LASSERT(v,v->count == 1,"the argc is too long!");
+    LASSERT(v,v->child[0]->type == LVAL_QEXP,
+         "function 'tail' passed with wrong types!");
+    LASSERT(v,v->child[0]->count != 0,
+         "function 'tail' can't be the mode of {}");
+
+   lval* x = lval_take(v,0);
+
+   lval_free(lval_pop(x,0));
+
+   return x;
+}
+
+//change to the mode of qexpression
+lval* builtin_eval(lval* v){
+   LASSERT(v,v->child[0]->type == LVAL_QEXP,
+           "function 'eval' passed with wrong types!");
+   LASSERT(v,v->child[0]->count != 0,
+         "function 'tail' can't be the mode of {}");
+   LASSERT(v,v->count == 1,"the argc is too long!");
+   
+   lval* x = lval_take(v,0);
+   x->type = LVAL_SEXP;
+   return lval_eval(x);
+}
+
+lval* lval_join(lval* x,lval* y){
+
+   while(y->count){
+      printf("now the y->count is:%d\n",y->count);
+      x = lval_add(x,lval_pop(y,0));
+   }
+
+   lval_free(y);
+   return x;
+}
+
+lval* builtin_join(lval* v){
+   for(int i=0;i<v->count;i++){
+     LASSERT(v,v->child[i]->type == LVAL_QEXP,"function 'join' is the wrong mode!");
+   }   
+
+   lval* x = lval_pop(v,0);
+
+   while(v->count){
+      x = lval_join(x,lval_pop(v,0));
+   }
+
+   lval_free(v);
+   return x;
+}
+
+lval* builtin(lval* v,char* function){
+   if(strstr("+-*/",function)){return builtin_op(v,function);}
+   if(strcmp("head",function) == 0){return builtin_head(v);}
+   if(strcmp("tail",function) == 0){return builtin_tail(v);}
+   if(strcmp("list",function) == 0){return builtin_list(v);}
+   if(strcmp("eval",function) == 0){return builtin_eval(v);}
+   if(strcmp("join",function) == 0){return builtin_join(v);}
+   lval_free(v);
+   return lval_err("Unknowed the error");
 }
 
 lval* lval_eval_sexp(lval* v){
@@ -252,16 +381,21 @@ lval* lval_eval_sexp(lval* v){
           lval_err("第一个操作不是操作符");
      }
 
-     lval* result = builtin_op(v,f->sym);
+     lval* result = builtin(v,f->sym);
      lval_free(f);
      return result;
 }
 
 lval* lval_eval(lval* v){
      if(v->type == LVAL_SEXP){return lval_eval_sexp(v);}
-   
      return v;
 }
+
+
+
+
+//design the function of list,head,tail,join,eval
+//make the input change to the type of lval to computer
 
 int main(int argc,char** argv){
        mpc_parser_t* Number = mpc_new("number");
@@ -273,7 +407,8 @@ int main(int argc,char** argv){
 
        mpca_lang(MPCA_LANG_DEFAULT,
            "number: /-?[0-9]+/;       \
-            symbol: '+' | '-' | '*' | '/'; \
+            symbol: '+' | '-' | '*' | '/' | \"list\" | \"head\" | \"tail\" \
+                    | \"join\" | \"eval\";\
            qexpresion: '{' <expresion>* '}'; \
             sexpresion: '('<expresion>*')' ;    \
             expresion: <number> | <symbol> | <sexpresion> | <qexpresion>; \
